@@ -1,2 +1,2 @@
 # homebridge-egreat-androidtv
-Homebridge Plug-in for Egreat Players
+Homebridge plug-in for Egreat players
