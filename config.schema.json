@@ -1,0 +1,354 @@
+{
+  "pluginAlias": "egreatPlugin",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "This plugin is provided by [carlosgamezvillegas](https://github.com/carlosgamezvillegas/)",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "required": true,
+        "default": "Egreat"
+      },
+      "ip": {
+        "title": "IP Address",
+        "type": "string",
+        "placeholders": "192.168.1.1",
+        "required": true
+      },
+      "pollingInterval": {
+        "title": "Polling Interval (milliseconds)",
+        "type": "number",
+        "placeholders": "1000",
+        "required": false
+      },
+      "modelName": {
+        "title": "Model",
+        "type": "string",
+        "placeholders": "A5",
+        "required": false
+      },
+      "manufacture": {
+        "title": "Manufacturer",
+        "type": "string",
+        "placeholders": "Egreat",
+        "required": false
+      },
+      "serialN": {
+        "title": "Serial Number",
+        "type": "string",
+        "placeholders": "12345678900",
+        "required": false
+      },
+      "newPlatformUUID": {
+        "title": "New Platform UUID",
+        "type": "boolean",
+        "required": false
+      },
+      "mediaButtons": {
+        "title": "Add Media Remote Control buttons (Next, Previous, Forward, Rewind)",
+        "type": "boolean",
+        "required": false
+      },
+      "movieControl": {
+        "title": "Add Movie Progress as a dimmer",
+        "type": "boolean",
+        "required": false
+      },
+      "cursorUpB": {
+        "title": "Add the Cursor Up button",
+        "type": "boolean",
+        "required": false
+      },
+      "cursorDownB": {
+        "title": "Add the Cursor Down button",
+        "type": "boolean",
+        "required": false
+      },
+      "cursorLeftB": {
+        "title": "Add the Cursor Left button",
+        "type": "boolean",
+        "required": false
+      },
+      "cursorRightB": {
+        "title": "Add the Cursor Right button",
+        "type": "boolean",
+        "required": false
+      },
+      "cursorEnterB": {
+        "title": "Add the Enter button",
+        "type": "boolean",
+        "required": false
+      },
+      "menuB": {
+        "title": "Add the Menu button",
+        "type": "boolean",
+        "required": false
+      },
+      "backButtonB": {
+        "title": "Add the Back button",
+        "type": "boolean",
+        "required": false
+      },
+      "clearB": {
+        "title": "Add the Clear button",
+        "type": "boolean",
+        "required": false
+      },
+      "guideB": {
+        "title": "Add the Guide button",
+        "type": "boolean",
+        "required": false
+      },
+      "homeB": {
+        "title": "Add the Home button",
+        "type": "boolean",
+        "required": false
+      },
+      "infoB": {
+        "title": "Add the Info button",
+        "type": "boolean",
+        "required": false
+      },
+      "pageUpB": {
+        "title": "Add the Page Up button",
+        "type": "boolean",
+        "required": false
+      },
+      "pageDownB": {
+        "title": "Add the Page Down button",
+        "type": "boolean",
+        "required": false
+      },
+      "redB": {
+        "title": "Add the Red button",
+        "type": "boolean",
+        "required": false
+      },
+      "yellowB": {
+        "title": "Add the Yellow button",
+        "type": "boolean",
+        "required": false
+      },
+      "blueB": {
+        "title": "Add the Blue button",
+        "type": "boolean",
+        "required": false
+      },
+      "greenB": {
+        "title": "Add the Green button",
+        "type": "boolean",
+        "required": false
+      },
+      "audioB": {
+        "title": "Add the Audio button",
+        "type": "boolean",
+        "required": false
+      },
+      "subtitleB": {
+        "title": "Add the Subtitle button",
+        "type": "boolean",
+        "required": false
+      },
+      "pictureB": {
+        "title": "Add the Aspect Ratio button",
+        "type": "boolean",
+        "required": false
+      },
+      "holdLeftB": {
+        "title": "Add the Hold Left button",
+        "type": "boolean",
+        "required": false
+      },
+      "holdRightB": {
+        "title": "Add the Hold Right button",
+        "type": "boolean",
+        "required": false
+      },
+      "LEDOnOffB": {
+        "title": "Add the LED On/Off button",
+        "type": "boolean",
+        "required": false
+      },
+      "skipForwardB": {
+        "title": "Add the Skip Forward button",
+        "type": "boolean",
+        "required": false
+      },
+      "skipRewindB": {
+        "title": "Add the Skip Rewind button",
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "layout": [
+    {
+      "type": "flex",
+      "flex-flow": "row wrap",
+      "items": [
+        {
+          "type": "flex",
+          "flex-flow": "column",
+          "items": [
+            "name"
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "column",
+          "items": [
+            "ip"
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "column",
+          "items": [
+            "pollingInterval"
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "column",
+          "items": [
+            "modelName"
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "column",
+          "items": [
+            "manufacture"
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "column",
+          "items": [
+            "serialN"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Optional Services",
+      "expandable": true,
+      "expanded": true,
+      "items": [
+        {
+          "key": "mediaButtons"
+        },
+        {
+          "key": "movieControl"
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Navegation Buttons",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        {
+          "key": "cursorUpB"
+        },
+        {
+          "key": "cursorDownB"
+        },
+        {
+          "key": "cursorLeftB"
+        },
+        {
+          "key": "cursorRightB"
+        },
+        {
+          "key": "cursorEnterB"
+        },
+        {
+          "key": "menuB"
+        },
+        {
+          "key": "homeB"
+        },
+        {
+          "key": "backButtonB"
+        },
+        {
+          "key": "clearB"
+        },
+        {
+          "key": "guideB"
+        },
+        {
+          "key": "holdLeftB"
+        },
+        {
+          "key": "holdRightB"
+        },
+        {
+          "key": "infoB"
+        },
+        {
+          "key": "LEDOnOffB"
+        },
+        {
+          "key": "skipForwardB"
+        },
+        {
+          "key": "skipRewindB"
+        },
+        {
+          "key": "pageUpB"
+        },
+        {
+          "key": "pageDownB"
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Other Buttons",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        {
+          "key": "redB"
+        },
+        {
+          "key": "yellowB"
+        },
+        {
+          "key": "greenB"
+        },
+        {
+          "key": "blueB"
+        },
+        {
+          "key": "subtitleB"
+        },
+        {
+          "key": "audioB"
+        },
+        {
+          "key": "pictureB"
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Troubleshooting",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        {
+          "key": "newPlatformUUID",
+          "description": "Enable this if you do not see the accessory when you try to add it to the Home App. Note that it will create a new accesssory if the name of the device is changed in Settings. Old accesories must be removed manually in the Home app."
+        }
+      ]
+    }
+  ]
+}

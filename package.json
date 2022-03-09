@@ -1,0 +1,42 @@
+{
+  "displayName": "Homebridge Egreat A5/A10/A11/A13/A15",
+  "name": "homebridge-egreat-androidtv",
+  "version": "0.1.0",
+  "description": "Homebridge Plugin to control your Egreat A5/A10/A11/A13/A15",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/carlosgamezvillegas/homebridge-egreat-androidtv.git"
+  },
+  "bugs": {
+    "url": "https://github.com/carlosgamezvillegas/homebridge-egreat-androidtv/issues"
+  },
+  "engines": {
+    "node": ">=10.17.0",
+    "homebridge": ">=1.0.0"
+  },
+  "main": "index.js",
+  "keywords": [
+    "homebridge-egreat",
+    "homebridge-androidtv",
+    "homebridge-plugin",
+    "homebridge",
+    "egreat",
+    "androidtv",
+    "homekit"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^14.14.6",
+    "@typescript-eslint/eslint-plugin": "^4.6.1",
+    "@typescript-eslint/parser": "^4.6.1",
+    "eslint": "^7.13.0",
+    "homebridge": "^1.2.3",
+    "nodemon": "^2.0.6",
+    "rimraf": "^3.0.2",
+    "ts-node": "^9.0.0",
+    "typescript": "^4.0.5"
+  },
+  "homepage": "https://github.com/carlosgamezvillegas/homebridge-egreat-androidtv#readme",
+  "author": "Carlos Gamez"
+}
