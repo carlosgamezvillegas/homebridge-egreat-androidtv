@@ -4,6 +4,7 @@ const PLUGIN_NAME = 'homebridge-egreat-androidtv';
 const net = require("net");
 const EGREAT_PORT = 33080;
 const timeout = 2000;
+const tcpp = require('tcp-ping');
 
 
 module.exports = (api) => {
@@ -79,11 +80,11 @@ class egreatAccessory {
         this.currentVolumeSwitch = false;
         this.inputID = 1;
         this.mediaState = 4;
-        this.turnOffAllUsed = false;
         this.videoState = false;
         this.inputName = 'Movie-Video Tittle';
         this.inputDuration = 'Runtime';
         this.key = this.pressedButton('POWER ON');
+        this.isEgreatAlive = false;
         /////MovieConstants
         this.currentMovieProgress = 0;
         this.currentMovieProgressState = false;
@@ -93,11 +94,10 @@ class egreatAccessory {
         this.firstElapsedMovie = 0;
         ////Connection parameters
         this.reconnectionCounter = 0;
-        this.reconnectionTry = 2;
+        this.reconnectionTry = 5;
         this.connectionLimit = false;
         this.connectionLimitStatus = 0;
         this.reconnectionWait = platform.config.pollingInterval || 10000;
-        this.firstConnection = false;
         this.newResponse = '';
         //Device Information//////////////////////////////////////////////////////////////////////////////////////
         this.config.name = platform.config.name || 'Egreat A5';
@@ -301,10 +301,10 @@ class egreatAccessory {
             .on('set', (newValue, callback) => {
                 this.platform.log.debug('Requested Egreat Settings ' + newValue);
                 if (this.playBackState[0] === false && this.playBackState[1] === false && this.playBackState[2] === false) {
-                    this.sending([this.pressedButton('SETUP')]);
+                    this.sending([this.pressedButton('MENU')]);
                 }
                 else {
-                    this.sending([this.pressedButton('POP-UP MENU')]);
+                    this.sending([this.pressedButton('TOP MENU')]);
                 }
                 callback();
             });
@@ -1187,6 +1187,10 @@ class egreatAccessory {
         this.netConnect();
         //syncing////////////////////////////////////////////////////////////////////////////////////////
         setInterval(() => {
+            tcpp.probe(this.EGREAT_IP, EGREAT_PORT, (err, isAlive) => {
+                this.isEgreatAlive = isAlive;
+                this.platform.log.debug(isAlive);
+            });
 
             if (this.reconnectionCounter >= this.reconnectionTry) {
                 this.platform.log.debug("Egreat Not Responding");
@@ -1195,11 +1199,15 @@ class egreatAccessory {
                 this.turnOffAll();
                 // this.netConnect()
             }
-            if (this.client.readyState === 'Closed') {
+            if (this.isEgreatAlive === false) {
                 this.turnOffAll();
-                this.client.end();
-                delete this.client
-                this.netConnect();
+                if (this.reconnectionCounter >= this.reconnectionTry) {
+                    this.platform.log.debug("Egreat Not Responding");
+                    this.connectionLimit = true;
+                    this.connectionLimitStatus = 1;
+                    this.turnOffAll();
+                    // this.netConnect()
+                }
                 this.reconnectionCounter += 1;
                 //this.netConnect()
             }
@@ -1207,18 +1215,11 @@ class egreatAccessory {
                 this.movieCounter = this.movieCounter + this.config.pollingInterval / 1000;
                 this.newMovieTime(this.movieCounter);
             }
-            if (this.client.readyState === true && this.playBackState[0] === false) {
+            if (this.isEgreatAlive === true && this.powerStateTV === 0) {
                 this.client.end();
                 delete this.client
                 this.netConnect();
-                this.reconnectionCounter += 1;
                 // this.sending([this.pressedButton('POWER ON')]);
-            }
-            if (this.client.writable === false) {
-                this.turnOffAll();
-            }
-            if (this.client.readable === false) {
-                this.turnOffAll();
             }
             this.platform.log.debug('Ready State: ', this.client.readyState);
             //this.platform.log('Number of reconnection tries: ' + this.reconnectionCounter);
@@ -1255,23 +1256,19 @@ class egreatAccessory {
         this.client.connect(EGREAT_PORT, this.EGREAT_IP, () => {
             this.platform.log.debug(`Connecting to ${this.config.name}`);
             clearTimeout(timer);
-            //this.platform.log(`Sending: ${this.commandName(this.key)}`);
-            // this.client.write(this.key);
-            this.firstConnection = true;
         });
         this.client.on('ready', () => {
             clearTimeout(timer);
             this.platform.log.debug(`${this.config.name} is ready`);
             this.platform.log.debug(`Sending: ${this.commandName(this.key)}`);
             this.sending([this.key]);
-            // this.client.write(this.key);
-            //this.resetCouter()
-            this.firstConnection = true;
         });
         /////Receiving Data
         this.client.on('data', (data) => {
             clearTimeout(timer);
             this.eventDecoder(data);
+            this.newPowerState(true);
+            this.resetCounter();
         });
         /////Errors
         this.client.on('error', (e) => {
@@ -1283,60 +1280,25 @@ class egreatAccessory {
             this.client.removeAllListeners();
             this.client.destroy();
             this.reconnectionCounter += 1;
-            this.firstConnection = true;
             this.platform.log.debug("Reconnection counter is " + this.reconnectionCounter);
             // if (this.reconnectionCounter < this.reconnectionTry) {
-            setTimeout(() => {
-                delete this.client
-                this.netConnect();
-            }, this.reconnectionWait);
-            if (this.reconnectionCounter > this.reconnectionTry) {
-                this.connectionLimit = true;
-                this.connectionLimitStatus = 1;
-                if (this.turnOffAllUsed === false) {
-                    this.turnOffAll();
-                    this.turnOffAllUsed = true;
-                }
-            }
         });
         ////Connection Closed
         this.client.on('close', () => {
             this.platform.log.debug(`Disconnected from ${this.config.name}`);
             this.reconnectionCounter += 1;
-            this.firstConnection = true;
             this.currentMovieProgressFirst = true;
             this.client.end();
             this.client.removeAllListeners();
             this.client.destroy();
-            setTimeout(() => {
-                delete this.client
-                this.netConnect();
-            }, this.reconnectionWait);
-            if (this.reconnectionCounter > this.reconnectionTry) {
-                if (this.turnOffAllUsed === false) {
-                    this.turnOffAll();
-                    this.turnOffAllUsed = true;
-                }
-            }
         });
         this.client.on('end', () => {
             this.platform.log.debug(`Connection to ${this.config.name} ended`);
             this.reconnectionCounter += 1;
-            this.firstConnection = true;
             this.currentMovieProgressFirst = true;
             this.client.end();
             this.client.removeAllListeners();
             this.client.destroy();
-            setTimeout(() => {
-                delete this.client
-                this.netConnect();
-            }, this.reconnectionWait);
-            if (this.reconnectionCounter > this.reconnectionTry) {
-                if (this.turnOffAllUsed === false) {
-                    this.turnOffAll();
-                    this.turnOffAllUsed = true;
-                }
-            }
         });
         /////Time out Timer
         const timer = setTimeout(() => {
@@ -1555,7 +1517,7 @@ class egreatAccessory {
             this.inputID = 3;
         }
 
-        else if (this.inputState[0] === false && this.inputState[1] === false && this.inputState[2]) {
+        else if (this.inputState[0] === false && this.inputState[1] === false && this.inputState[2] === false) {
             this.inputID = 0;
         }
         else {
@@ -1578,7 +1540,7 @@ class egreatAccessory {
         while (i < res.length) {
             this.platform.log.debug(i);
             this.platform.log.debug(res[i]);
-            if (res[i] === '' || res[i].includes('CMD') || res[i].includes('END') || res[i].includes('NOTIFY')) {
+            if (res[i] === '' || res[i].includes('CMD') || res[i].includes('END') || res[i].includes('NOTIFY') || res[i].includes('on')) {
                 //
 
 
@@ -1587,37 +1549,12 @@ class egreatAccessory {
             ///////////////Power Status/////////////////////////////////////////////////////////////////////
             else if (res[i].includes('standby')) {
                 this.platform.log(`Response: ${this.commandName(res[i])} ${this.newResponse}`);
-                this.resetCouter();
+                this.resetCounter();
                 this.newPowerState(true);
             }
 
-            //////////////Movie and chapter progress/////////////////////////////////////////////////
-            ////////////////Volume state update///////////////////////////////////////////////////////////
-            /*
-            else if (res[i].includes('UVL')) {
-                if (res[i].includes('UMT')) {
-                    if (this.powerState === false) {
-                        this.newVolumeStatus(0);
-                    }
-                    else {
-                        this.platform.log.debug(`Response: Unmuted (UVL)`);
-                        this.newVolumeStatus(this.targetVolume);
-                    }
-                }
-                else if (!res[i].includes('MUT')) {
-                    let numberOnly = res[i].replace(/^\D+/g, '');
-                    this.newVolumeStatus(parseInt(numberOnly, 10));
-                    this.targetVolume = numberOnly;
-                    if (this.powerState === true) {
-                        this.platform.log(`Response: Volume Level set to ${numberOnly} (UVL)`);
-                    }
-                }
-                else {
-                    this.platform.log(`Response: Muted (UVL)`);
-                    this.newVolumeStatus(0);
-                }
-            }
-            */
+
+
             //////Playback update/////////////////////////////////////////////////////////////
 
             else if (res[i].includes('PLAYINFO')) {
@@ -1641,19 +1578,19 @@ class egreatAccessory {
             }
             else if (res[i].includes('PLAY')) {
                 this.platform.log(`Response: Play Executed`);
-                this.resetCouter();
+                this.resetCounter();
                 this.newPlayBackState([true, false, false]);
                 this.newPowerState(true);
             }
 
             else if (res[i].includes('PAUSE')) {
                 this.platform.log(`Response: Pause Executed`);
-                this.resetCouter();
+                this.resetCounter();
                 this.newPowerState(true);
             }
             else if (res[i].includes('STOP')) {
                 this.platform.log(`Response: Stop Executed`);
-                this.resetCouter();
+                this.resetCounter();
                 this.newPlayBackState([false, false, false]);
                 this.newInputName('Movie-Video Tittle');
                 this.newInputDuration('Runtime');
@@ -1936,7 +1873,7 @@ class egreatAccessory {
 
 
     ////Update instructions
-    resetCouter() {
+    resetCounter() {
         this.reconnectionCounter = 0;
         this.connectionLimit = false;
         this.connectionLimitStatus = 0;
