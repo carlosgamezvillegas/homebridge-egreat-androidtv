@@ -7,7 +7,7 @@
 
 # What is this?
 
-`homebrige-egreat-androidtv` is a plugin for Homebridge to Control your Egreat A5 from your Home app. It should work withr Egreat A5/A10/A11/A13/A15.
+`homebrige-egreat-androidtv` is a plugin for Homebridge to Control your Egreat A5 from your Home app. It should work with Egreat A5/A10/A11/A13/A15.
 
 
 ### Features
