@@ -1,15 +1,15 @@
 {
-  "displayName": "Homebridge Egreat A5/A10/A11/A13/A15",
-  "name": "homebridge-egreat-androidtv",
+  "displayName": "Homebridge Zidoo Z9X",
+  "name": "homebridge-zidoo-androidtv",
   "version": "0.1.1",
-  "description": "Homebridge Plugin to control your Egreat A5/A10/A11/A13/A15",
+  "description": "Homebridge Plugin to control your Zidoo Z9X.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git://github.com/carlosgamezvillegas/homebridge-egreat-androidtv.git"
+    "url": "git://github.com/carlosgamezvillegas/homebridge-zidoo-androidtv.git"
   },
   "bugs": {
-    "url": "https://github.com/carlosgamezvillegas/homebridge-egreat-androidtv/issues"
+    "url": "https://github.com/carlosgamezvillegas/homebridge-zidoo-androidtv/issues"
   },
   "engines": {
     "node": ">=16.13.0",
@@ -17,15 +17,16 @@
   },
   "main": "index.js",
   "keywords": [
-    "homebridge-egreat",
-    "homebridge-androidtv",
     "homebridge-plugin",
+    "homebridge-zidoo",
     "homebridge",
-    "egreat",
-    "androidtv",
-    "homekit"
+    "zidoo",
+    "homekit",
+    "blu-ray"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "wol": "^1.0.7"
+  },
   "devDependencies": {
     "@types/node": "^14.14.6",
     "@typescript-eslint/eslint-plugin": "^4.6.1",
@@ -37,6 +38,7 @@
     "ts-node": "^9.0.0",
     "typescript": "^4.0.5"
   },
-  "homepage": "https://github.com/carlosgamezvillegas/homebridge-egreat-androidtv#readme",
+  "homepage": "https://github.com/carlosgamezvillegas/homebridge-zidoo-androidtv#readme",
   "author": "Carlos Gamez"
 }
+
