@@ -6,6 +6,7 @@
 [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 [![homebridge-egreat-androidtv](https://badgen.net/npm/v/homebridge-egreat-androidtv?icon=npm)](https://www.npmjs.com/package/homebridge-egreat-androidtv)
 [![mit-license](https://badgen.net/npm/license/lodash)](https://github.com/merdok/homebridge-egreat-androidtv/blob/master/LICENSE)
+  
 </span>
 
 # What is this?
