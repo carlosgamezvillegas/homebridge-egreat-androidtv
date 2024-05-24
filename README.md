@@ -3,10 +3,10 @@
 # homebridge-egreat-androidtv
 ## Homebridge Plugin to control your Egreat A5/A10/A11/A13/A15
 
+
 [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 [![homebridge-egreat-androidtv](https://badgen.net/npm/v/homebridge-egreat-androidtv?icon=npm)](https://www.npmjs.com/package/homebridge-egreat-androidtv)
 [![mit-license](https://badgen.net/npm/license/lodash)](https://github.com/merdok/homebridge-egreat-androidtv/blob/master/LICENSE)
-  
 </span>
 
 # What is this?
@@ -58,7 +58,7 @@ Make sure you change the IP Address the one the devices is currently using.
 
 
 ### Adding the Egreeat to the Home app
-Since HomeKit expects only one Oppo per bridge they will be declared as external accessories and acts as a bridge.  
+Since HomeKit expects only one Egreat per bridge they will be declared as external accessories and acts as a bridge.  
 This means that a device will not appear in your Home app until you add it!
 
 To add the Egreat to HomeKit follow this steps:
@@ -126,11 +126,9 @@ Button Name List is :
 Note: You can add  buttons in the "Navagation Buttons" and "other Buttons" in Settings using Homebridge UI
 - `newPlatformUUID` [optional]
 Enable this if you do not see the accessory when you try to add it to the Home App after deleting it. It will also create a different accesssory every time you chage the Name of the device in Settings. If an old accessory already exists in the Home App you will have to remove it manually. **Default: false**
-- `chinoppo` [optional]
-Enable this in case the Oppo clone does not turn on with the On/Off button. It sends the Eject command instead. **Default: false**
 
 ## Troubleshooting
-If you have any issues with the plugin or Oppo services then you can run homebridge in debug mode, which will provide some additional information. This might be useful for debugging issues.
+If you have any issues with the plugin or Egreat services then you can run homebridge in debug mode, which will provide some additional information. This might be useful for debugging issues.
 
 Homebridge debug mode:
 ```sh
@@ -146,7 +144,7 @@ This will enable additional extra log which might be helpful to debug all kind o
 Note: Controls won't update if the plugin does not receive a confirmation message from the device
 
 ## Known Issues
--  For some reason the On and Off commands are not executed the TV box so Turning On or Off the device is not possible at this momment.
+-  For some reason the On and Off commands are not executed by the TV box so Turning On or Off the device is not possible at this momment.
  - The accurate state of the device cannot be determined since there are no query commands available 
 
 ## Special thanks

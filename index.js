@@ -8,7 +8,7 @@ const tcpp = require('tcp-ping');
 
 
 module.exports = (api) => {
-    api.registerPlatform(PLATFORM_NAME, egreatPlatform);
+    api.registerPlatform(PLUGIN_NAME, PLATFORM_NAME, egreatPlatform, true);
 };
 //// Platform/////////////////////////////////////////////////////////////////////////////////////////////////
 class egreatPlatform {
@@ -54,7 +54,7 @@ class egreatPlatform {
         const uuid = this.api.hap.uuid.generate(this.egreatDevice.egreatUniqueId);
         this.log.debug('Adding new accessory:', this.egreatDevice.egreatDisplayName);
         const accessory = new this.api.platformAccessory(this.egreatDevice.egreatDisplayName, uuid);
-        accessory.category = this.api.hap.Accessory.Categories.TELEVISION;
+        accessory.category = this.api.hap.Accessory.Categories.TV_SET_TOP_BOX;
         accessory.context.device = this.egreatDevice;
         new egreatAccessory(this, accessory);
         this.api.publishExternalAccessories(PLUGIN_NAME, [accessory]);
@@ -62,7 +62,6 @@ class egreatPlatform {
 }
 class egreatAccessory {
     constructor(platform, accessory) {
-
         this.platform = platform;
         this.accessory = accessory;
         this.config = platform.config;
@@ -81,7 +80,7 @@ class egreatAccessory {
         this.inputID = 1;
         this.mediaState = 4;
         this.videoState = false;
-        this.inputName = 'Movie-Video Tittle';
+        this.inputName = 'Media Title';
         this.inputDuration = 'Runtime';
         this.key = this.pressedButton('POWER ON');
         this.isEgreatAlive = false;
@@ -91,7 +90,8 @@ class egreatAccessory {
         this.movieElapsed = 0;
         this.movieRemaining = 0;
         this.movieCounter = 0;
-        this.firstElapsedMovie = 0;
+        this.pauseUpdate = false;
+        this.newRemainingTime = 0;
         ////Connection parameters
         this.reconnectionCounter = 0;
         this.reconnectionTry = 5;
@@ -134,6 +134,9 @@ class egreatAccessory {
         this.config.LEDOnOffB = platform.config.LEDOnOffB || false;
         this.config.skipForwardB = platform.config.skipForwardB || false;
         this.config.skipRewindB = platform.config.skipRewindB || false;
+        this.config.changeDimmersToFan = platform.config.changeDimmersToFan || false;
+        this.config.infoToMenu = platform.config.infoToMenu || false;
+        this.config.remainMovieTimer = platform.config.remainMovieTimer || false;
         ////Checking if the necessary information was given by the user////////////////////////////////////////////////////
         try {
             if (!this.config.ip) {
@@ -160,11 +163,17 @@ class egreatAccessory {
             .Characteristic.SleepDiscoveryMode, this.platform.Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
         this.tvService.getCharacteristic(this.platform.Characteristic.Active)
             .on('set', (newValue, callback) => {
-                this.platform.log.debug('Set Oppo Active to: ' + newValue);
+                this.pauseUpdate = true;
+                this.platform.log.debug('Set Egreat Active to: ' + newValue);
                 if (newValue === 1) {
+                    this.pauseUpdate = true;
+                    this.newPowerState(true);
                     this.sending([this.pressedButton('POWER ON')]);
+
                 }
                 else {
+                    this.turnOffAll();
+
                     if (this.playBackState[0] === true) {
                         this.sending([this.pressedButton('PAUSE')]);
                         setTimeout(() => {
@@ -174,6 +183,7 @@ class egreatAccessory {
                     else {
                         this.sending([this.pressedButton('POWER OFF')]);
                     }
+
                 }
                 callback(null);
             });
@@ -260,8 +270,14 @@ class egreatAccessory {
                         break;
                     }
                     case this.platform.Characteristic.RemoteKey.INFORMATION: {
-                        this.platform.log.debug('set Remote Key Pressed: INFORMATION');
-                        this.sending([this.pressedButton('INFO')]);
+                        if (this.config.infoToMenu) {
+                            this.platform.log.debug('set Remote Key Pressed: MENU');
+                            this.sending([this.pressedButton('MENU')]);
+                        }
+                        else {
+                            this.platform.log.debug('set Remote Key Pressed: INFORMATION');
+                            this.sending([this.pressedButton('INFO')]);
+                        }
                         break;
                     }
                 }
@@ -304,7 +320,7 @@ class egreatAccessory {
                     this.sending([this.pressedButton('MENU')]);
                 }
                 else {
-                    this.sending([this.pressedButton('TOP MENU')]);
+                    this.sending([this.pressedButton('MENU')]);
                 }
                 callback();
             });
@@ -364,7 +380,7 @@ class egreatAccessory {
                 this.platform.log.debug('Playback State set to:', value);
                 callback(null);
             });
-        ////////Volume services for the Oppo/////////////////////////////////////////////////////////////////////////////////
+        ////////Volume services for the Egreat/////////////////////////////////////////////////////////////////////////////////
         this.speakerService = this.accessory.getService('Egreat Volume Control') ||
             this.accessory.addService(this.platform.Service.TelevisionSpeaker, 'Egreat Volume Control', 'YourUniqueIdentifier-20');
         this.speakerService
@@ -413,88 +429,170 @@ class egreatAccessory {
         this.tvService.addLinkedService(this.speakerService);
         /////Video/Movie Controls/////////////////////////////////////////////////////////////////////
         if (this.config.movieControl === true) {
-            this.movieControlL = this.accessory.getService('Movie Progress') ||
-                this.accessory.addService(this.platform.Service.Lightbulb, 'Movie Progress', 'YourUniqueIdentifier-301');
-            this.movieControlL.setCharacteristic(this.platform.Characteristic.Name, 'Movie Progress');
-            this.movieControlL.getCharacteristic(this.platform.Characteristic.On)
-                .on('get', (callback) => {
-                    let currentValue = this.currentMovieProgressState;
-                    callback(null, currentValue);
-                })
-                .on('set', (newValue, callback) => {
-                    this.platform.log.debug('Movie progress state set to: ' + newValue);
-                    callback(null);
-                });
-            this.movieControlL.addCharacteristic(new this.platform.Characteristic.Brightness())
-                .on('get', (callback) => {
-                    let currentValue = this.currentMovieProgress;
-                    callback(null, currentValue);
-                })
-                .on('set', (newValue, callback) => {
-                    // let newSendValue = Math.round(newValue * (this.firstElapsedMovie + this.movieRemaining) / 100);
-                    //let totalMovieTime = this.firstElapsedMovie + this.movieRemaining;
-                    //if (newSendValue > totalMovieTime) { newSendValue = totalMovieTime; }
-                    //this.sending([this.movieTime(this.secondsToTime(newSendValue))]);
-                    //this.platform.log('Movie progress set to: ' + newValue + '%');
-                    callback(null);
-                });
+            if (this.config.changeDimmersToFan === false) {
+                this.movieControlL = this.accessory.getService('Movie Progress') ||
+                    this.accessory.addService(this.platform.Service.Lightbulb, 'Movie Progress', 'YourUniqueIdentifier-301');
+                this.movieControlL.setCharacteristic(this.platform.Characteristic.Name, 'Movie Progress');
+                this.movieControlL.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+                this.movieControlL.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Movie Progress');
+                this.movieControlL.getCharacteristic(this.platform.Characteristic.On)
+                    .on('get', (callback) => {
+                        let currentValue = this.currentMovieProgressState;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        this.platform.log.debug('Movie progress state set to: ' + newValue);
+                        callback(null);
+                    });
+                this.movieControlL.addCharacteristic(new this.platform.Characteristic.Brightness())
+                    .on('get', (callback) => {
+                        let currentValue = this.currentMovieProgress;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        // let newSendValue = Math.round(newValue * (this.firstElapsedMovie + this.movieRemaining) / 100);
+                        //let totalMovieTime = this.firstElapsedMovie + this.movieRemaining;
+                        //if (newSendValue > totalMovieTime) { newSendValue = totalMovieTime; }
+                        //this.sending([this.movieTime(this.secondsToTime(newSendValue))]);
+                        //this.platform.log('Movie progress set to: ' + newValue + '%');
+                        callback(null);
+                    });
+            }
+            else {
+                this.movieControlF = this.accessory.getService('Movie Progress') ||
+                    this.accessory.addService(this.platform.Service.Fanv2, 'Movie Progress', 'YourUniqueIdentifier-301F');
+                this.movieControlF.setCharacteristic(this.platform.Characteristic.Name, 'Movie Progress');
+                this.movieControlF.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+                this.movieControlF.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Movie Progress');
+                this.movieControlF.getCharacteristic(this.platform.Characteristic.Active)
+                    .on('get', (callback) => {
+                        let currentValue = this.currentMovieProgressState ? 1 : 0;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        this.platform.log.debug('Movie progress state set to: ' + newValue);
+                        callback(null);
+                    });
+                this.movieControlF.addCharacteristic(new this.platform.Characteristic.RotationSpeed)
+                    .on('get', (callback) => {
+                        let currentValue = this.currentMovieProgress;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        // let newSendValue = Math.round(newValue * (this.firstElapsedMovie + this.movieRemaining) / 100);
+                        //let totalMovieTime = this.firstElapsedMovie + this.movieRemaining;
+                        //if (newSendValue > totalMovieTime) { newSendValue = totalMovieTime; }
+                        //this.sending([this.movieTime(this.secondsToTime(newSendValue))]);
+                        //this.platform.log('Movie progress set to: ' + newValue + '%');
+                        callback(null);
+                    });
+            }
         }
         /////////////Addtional Services////////////////////////////////////////////////////////////////////////////////////
         this.play = this.accessory.getService('Play') ||
             this.accessory.addService(this.platform.Service.Switch, 'Play', 'YourUniqueIdentifier-10');
+        this.play.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+        this.play.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Play');
         this.play.getCharacteristic(this.platform.Characteristic.On)
             .on('get', this.playSwitchStateGet.bind(this))
             .on('set', this.playSwitchStateSet.bind(this));
         this.pause = this.accessory.getService('Pause') ||
             this.accessory.addService(this.platform.Service.Switch, 'Pause', 'YourUniqueIdentifier-11');
+        this.pause.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+        this.pause.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Pause');
         this.pause.getCharacteristic(this.platform.Characteristic.On)
             .on('get', this.pauseSwitchStateGet.bind(this))
             .on('set', this.pauseSwitchStateSet.bind(this));
         this.stop = this.accessory.getService('Stop') ||
             this.accessory.addService(this.platform.Service.Switch, 'Stop', 'YourUniqueIdentifier-12');
+        this.stop.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+        this.stop.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Stop');
         this.stop.getCharacteristic(this.platform.Characteristic.On)
             .on('get', this.stopSwitchStateGet.bind(this))
             .on('set', this.stopSwitchStateSet.bind(this));
         //////Volume control Service as lightbulb////////////////////////////////////////////////////////////////////////////
         if (this.config.volume === true) {
-            this.volumeDimmer = this.accessory.getService('Egreat Volume') ||
-                this.accessory.addService(this.platform.Service.Lightbulb, 'Oppo Volume', 'YourUniqueIdentifier-98');
-            this.volumeDimmer.getCharacteristic(this.platform.Characteristic.On)
-                .on('get', (callback) => {
-                    let currentValue = this.currentVolumeSwitch;
-                    callback(null, currentValue);
-                })
-                .on('set', (newValue, callback) => {
-                    let newVolume = this.targetVolume;
-                    if (newValue === true) {
-                        this.sending([this.volumeChange(newVolume)]);
-                        this.platform.log.debug('Volume Value set to: Unmute');
-                    }
-                    if (newValue === false) {
-                        newVolume = 0;
-                        this.sending([this.volumeChange(newVolume)]);
-                        this.platform.log.debug('Volume Value set to: Mute');
-                    }
+            if (this.config.changeDimmersToFan === false) {
+                this.volumeDimmer = this.accessory.getService('Egreat Volume') ||
+                    this.accessory.addService(this.platform.Service.Lightbulb, 'Egreat Volume', 'YourUniqueIdentifier-98');
+                this.volumeDimmer.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+                this.volumeDimmer.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Egreat Volume');
+                this.volumeDimmer.getCharacteristic(this.platform.Characteristic.On)
+                    .on('get', (callback) => {
+                        let currentValue = this.currentVolumeSwitch;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        let newVolume = this.targetVolume;
+                        if (newValue === true) {
+                            this.sending([this.volumeChange(newVolume)]);
+                            this.platform.log.debug('Volume Value set to: Unmute');
+                        }
+                        if (newValue === false) {
+                            newVolume = 0;
+                            this.sending([this.volumeChange(newVolume)]);
+                            this.platform.log.debug('Volume Value set to: Mute');
+                        }
 
-                    callback(null);
-                });
+                        callback(null);
+                    });
 
-            this.volumeDimmer.addCharacteristic(new this.platform.Characteristic.Brightness())
-                .on('get', (callback) => {
-                    let currentValue = this.currentVolume;
-                    callback(null, currentValue);
-                })
-                .on('set', (newValue, callback) => {
-                    this.sending([this.volumeChange(newValue)]);
-                    this.platform.log.debug('Volume Value set to: ' + newValue);
+                this.volumeDimmer.addCharacteristic(new this.platform.Characteristic.Brightness())
+                    .on('get', (callback) => {
+                        let currentValue = this.currentVolume;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        this.sending([this.volumeChange(newValue)]);
+                        this.platform.log.debug('Volume Value set to: ' + newValue);
 
-                    callback(null);
-                });
+                        callback(null);
+                    });
+            }
+            else {
+                this.volumeFan = this.accessory.getService('Egreat Volume') ||
+                    this.accessory.addService(this.platform.Service.Fanv2, 'Egreat Volume', 'YourUniqueIdentifier-98F');
+                this.volumeFan.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+                this.volumeFan.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Egreat Volume');
+                this.volumeFan.getCharacteristic(this.platform.Characteristic.Active)
+                    .on('get', (callback) => {
+                        let currentValue = this.currentVolumeSwitch ? 1 : 0;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        let newVolume = this.targetVolume;
+                        if (newValue === 1) {
+                            this.sending([this.volumeChange(newVolume)]);
+                            this.platform.log.debug('Volume Value set to: Unmute');
+                        }
+                        if (newValue === 0) {
+                            newVolume = 0;
+                            this.sending([this.volumeChange(newVolume)]);
+                            this.platform.log.debug('Volume Value set to: Mute');
+                        }
+
+                        callback(null);
+                    });
+
+                this.volumeFan.addCharacteristic(new this.platform.Characteristic.RotationSpeed)
+                    .on('get', (callback) => {
+                        let currentValue = this.currentVolume;
+                        callback(null, currentValue);
+                    })
+                    .on('set', (newValue, callback) => {
+                        this.sending([this.volumeChange(newValue)]);
+                        this.platform.log.debug('Volume Value set to: ' + newValue);
+
+                        callback(null);
+                    });
+            }
         }
         ////other Controls /////////////////////////////////////////////////////////
         if (this.config.cursorUpB === true) {
             this.cursorUp = this.accessory.getService('Cursor Up') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Cursor Up', 'YourUniqueIdentifier-31');
+            this.cursorUp.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.cursorUp.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Cursor Up');
             this.cursorUp.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Cursor Up GET On');
@@ -516,6 +614,8 @@ class egreatAccessory {
         if (this.config.cursorDownB === true) {
             this.cursorDown = this.accessory.getService('Cursor Down') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Cursor Down', 'YourUniqueIdentifier-32');
+            this.cursorDown.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.cursorDown.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Cursor Down');
             this.cursorDown.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Cursor Down GET On');
@@ -537,6 +637,8 @@ class egreatAccessory {
         if (this.config.cursorLeftB === true) {
             this.cursorLeft = this.accessory.getService('Cursor Left') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Cursor Left', 'YourUniqueIdentifier-33');
+            this.cursorLeft.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.cursorLeft.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Cursor Left');
             this.cursorLeft.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Cursor Left GET On');
@@ -558,6 +660,8 @@ class egreatAccessory {
         if (this.config.cursorRightB === true) {
             this.cursorRight = this.accessory.getService('Cursor Right') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Cursor Right', 'YourUniqueIdentifier-34');
+            this.cursorRight.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.cursorRight.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Cursor Right');
             this.cursorRight.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Cursor Right GET On');
@@ -579,6 +683,8 @@ class egreatAccessory {
         if (this.config.cursorEnterB === true) {
             this.cursorEnter = this.accessory.getService('Cursor Enter') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Cursor Enter', 'YourUniqueIdentifier-35');
+            this.cursorEnter.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.cursorEnter.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Cursor Enter');
             this.cursorEnter.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Cursor Enter GET On');
@@ -600,6 +706,8 @@ class egreatAccessory {
         if (this.config.menuB === true) {
             this.menu = this.accessory.getService('Menu') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Menu', 'YourUniqueIdentifier-36');
+            this.menu.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.menu.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Menu');
             this.menu.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Menu GET On');
@@ -621,6 +729,8 @@ class egreatAccessory {
         if (this.config.backButtonB === true) {
             this.backButton = this.accessory.getService('Back') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Back', 'YourUniqueIdentifier-37');
+            this.backButton.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.backButton.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Back');
             this.backButton.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Back GET On');
@@ -642,6 +752,8 @@ class egreatAccessory {
         if (this.config.clearB === true) {
             this.clear = this.accessory.getService('Clear') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Clear', 'YourUniqueIdentifier-40');
+            this.clear.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.clear.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Clear');
             this.clear.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Clear GET On');
@@ -663,6 +775,8 @@ class egreatAccessory {
         if (this.config.infoB === true) {
             this.infoButton = this.accessory.getService('Info') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Info', 'YourUniqueIdentifier-44');
+            this.infoButton.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.infoButton.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Info');
             this.infoButton.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Info GET On');
@@ -684,6 +798,8 @@ class egreatAccessory {
         if (this.config.pageUpB === true) {
             this.pageUp = this.accessory.getService('Page Up') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Page Up', 'YourUniqueIdentifier-50');
+            this.pageUp.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.pageUp.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Page Up');
             this.pageUp.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Page Up GET On');
@@ -704,6 +820,8 @@ class egreatAccessory {
         if (this.config.pageDownB === true) {
             this.pageDown = this.accessory.getService('Page Down') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Page Down', 'YourUniqueIdentifier-51');
+            this.pageDown.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.pageDown.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Page Down');
             this.pageDown.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Page Down GET On');
@@ -726,6 +844,8 @@ class egreatAccessory {
         if (this.config.mediaButtons === true) {
             this.previous = this.accessory.getService('Previous') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Previous', 'YourUniqueIdentifier-38');
+            this.previous.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.previous.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Previous');
             this.previous.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Previous GET On');
@@ -744,6 +864,8 @@ class egreatAccessory {
                 });
             this.next = this.accessory.getService('Next') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Next', 'YourUniqueIdentifier-39');
+            this.next.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.next.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Next');
             this.next.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Next GET On');
@@ -762,6 +884,8 @@ class egreatAccessory {
                 });
             this.rewindButton = this.accessory.getService('Rewind') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Rewind', 'YourUniqueIdentifier-46');
+            this.rewindButton.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.rewindButton.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Rewind');
             this.rewindButton.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Rewind GET On');
@@ -780,6 +904,8 @@ class egreatAccessory {
                 });
             this.forwardButton = this.accessory.getService('Forward') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Forward', 'YourUniqueIdentifier-80');
+            this.forwardButton.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.forwardButton.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Forward');
             this.forwardButton.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Forward GET On');
@@ -802,6 +928,8 @@ class egreatAccessory {
         if (this.config.redB === true) {
             this.red = this.accessory.getService('Red') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Red', 'YourUniqueIdentifier-53');
+            this.red.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.red.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Red');
             this.red.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Red GET On');
@@ -823,6 +951,8 @@ class egreatAccessory {
         if (this.config.greenB === true) {
             this.green = this.accessory.getService('Green') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Green', 'YourUniqueIdentifier-54');
+            this.green.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.green.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Green');
             this.green.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Green GET On');
@@ -844,6 +974,8 @@ class egreatAccessory {
         if (this.config.blueB === true) {
             this.blue = this.accessory.getService('Blue') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Blue', 'YourUniqueIdentifier-55');
+            this.blue.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.blue.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Blue');
             this.blue.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Blue GET On');
@@ -865,6 +997,8 @@ class egreatAccessory {
         if (this.config.yellowB === true) {
             this.yellow = this.accessory.getService('Yellow') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Yellow', 'YourUniqueIdentifier-56');
+            this.yellow.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.yellow.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Yellow');
             this.yellow.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Yellow GET On');
@@ -886,6 +1020,8 @@ class egreatAccessory {
         if (this.config.subtitleB === true) {
             this.subtitle = this.accessory.getService('Subtitle') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Subtitle', 'YourUniqueIdentifier-58');
+            this.subtitle.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.subtitle.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Subtitle');
             this.subtitle.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Subtitle GET On');
@@ -907,6 +1043,8 @@ class egreatAccessory {
         if (this.config.pictureB === true) {
             this.picture = this.accessory.getService('Picture') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Picture', 'YourUniqueIdentifier-68');
+            this.picture.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.picture.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Picture');
             this.picture.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Picture GET On');
@@ -928,6 +1066,8 @@ class egreatAccessory {
         if (this.config.homeB === true) {
             this.homeB = this.accessory.getService('Home') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Home', 'YourUniqueIdentifier-7000');
+            this.homeB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.homeB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Home');
             this.homeB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Home GET On');
@@ -949,6 +1089,8 @@ class egreatAccessory {
         if (this.config.guideB === true) {
             this.guideB = this.accessory.getService('Guide') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Guide', 'YourUniqueIdentifier-7001');
+            this.guideB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.guideB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Guide');
             this.guideB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Guide GET On');
@@ -970,6 +1112,8 @@ class egreatAccessory {
         if (this.config.audioB === true) {
             this.audioB = this.accessory.getService('Audio') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Audio', 'YourUniqueIdentifier-7002');
+            this.audioB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.audioB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Audio');
             this.audioB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Audio GET On');
@@ -991,6 +1135,8 @@ class egreatAccessory {
         if (this.config.LEDOnOffB === true) {
             this.LEDOnOffB = this.accessory.getService('LED On-Off') ||
                 this.accessory.addService(this.platform.Service.Switch, 'LED On-Off', 'YourUniqueIdentifier-7003');
+            this.LEDOnOffB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.LEDOnOffB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'LED On-Off');
             this.LEDOnOffB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('LED GET On');
@@ -1012,6 +1158,8 @@ class egreatAccessory {
         if (this.config.skipForwardB === true) {
             this.skipForwardB = this.accessory.getService('Skip Forward') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Skip Forward', 'YourUniqueIdentifier-7004');
+            this.skipForwardB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.skipForwardB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Skip Forward');
             this.skipForwardB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('SKIP FORWARD GET On');
@@ -1033,6 +1181,8 @@ class egreatAccessory {
         if (this.config.skipRewindB === true) {
             this.skipRewindB = this.accessory.getService('Skip Rewind') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Skip Rewind', 'YourUniqueIdentifier-7005');
+            this.skipRewindB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.skipRewindB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Skip Rewind');
             this.skipRewindB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('SKIP REWIND GET On');
@@ -1055,6 +1205,8 @@ class egreatAccessory {
         if (this.config.holdRightB === true) {
             this.holdRightB = this.accessory.getService('Hold Right') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Hold Right', 'YourUniqueIdentifier-7006');
+            this.holdRightB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.holdRightB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Hold Right');
             this.holdRightB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Hold Right GET On');
@@ -1075,6 +1227,8 @@ class egreatAccessory {
         if (this.config.holdLeftB === true) {
             this.holdLeftB = this.accessory.getService('Hold Left') ||
                 this.accessory.addService(this.platform.Service.Switch, 'Hold Left', 'YourUniqueIdentifier-7007');
+            this.holdLeftB.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.holdLeftB.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Hold Left');
             this.holdLeftB.getCharacteristic(this.platform.Characteristic.On)
                 .on('get', (callback) => {
                     this.platform.log.debug('Hold Left GET On');
@@ -1092,13 +1246,52 @@ class egreatAccessory {
                     callback(null);
                 });
         }
+        if (this.config.remainMovieTimer) {
+            this.movieTimer = accessory.getService(this.platform.Service.Valve) || accessory.addService(this.platform.Service.Valve, 'Movie Timer', 'Movie Timer');
+            this.movieTimer.setCharacteristic(this.platform.Characteristic.Name, 'Movie Timer');
+            this.movieTimer.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+            this.movieTimer.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Egreat Movie Timer');
+            this.movieTimer.setCharacteristic(this.platform.Characteristic.ValveType, this.platform.Characteristic.ValveType.IRRIGATION);
+            this.movieTimer.getCharacteristic(this.platform.Characteristic.Active)
+                .on('get', (callback) => {
+                    let currentValue = this.currentMovieProgressState ? 1 : 0
+                    callback(null, currentValue);
+                })
+                .on('set', (value, callback) => {
+                    callback(null);
+                });
+            this.movieTimer.setCharacteristic(this.platform.Characteristic.InUse, this.platform.Characteristic.InUse.NOT_IN_USE);
+            this.movieTimer.getCharacteristic(this.platform.Characteristic.RemainingDuration)
+                .on('get', (callback) => {
+                    let currentValue = this.movieRemaining;
+                    callback(null, currentValue);
+                })
+                .setProps({
+                    maxValue: 86400 / 4, // 1 day
+                });
+            this.movieTimer.getCharacteristic(this.platform.Characteristic.SetDuration)
+                .on('get', (callback) => {
+                    let currentValue = this.movieRemaining;
+                    callback(null, currentValue);
+                })
+                .setProps({
+                    maxValue: 86400 / 4, // 1 day
+                });
+
+
+        }
         ///////////////Clean up. Delete services not in used
+        if (this.config.remainMovieTimer === false) {
+            this.accessory.removeService(this.movieTimer);
+        }
         if (this.config.movieControl === false) {
             this.accessory.removeService(this.movieControlL);
+            this.accessory.removeService(this.movieControlF);
         }
 
         if (this.config.volume === false) {
             this.accessory.removeService(this.volumeDimmer);
+            this.accessory.removeService(this.volumeFan);
         }
         if (this.config.cursorUpB === false) {
             this.accessory.removeService(this.cursorUp);
@@ -1183,24 +1376,24 @@ class egreatAccessory {
         if (this.config.skipRewindB === false) {
             this.accessory.removeService(this.skipRewindB);
         }
-        //////////////////Connecting to Oppo
+        if (this.config.changeDimmersToFan === false) {
+            this.accessory.removeService(this.volumeFan);
+            this.accessory.removeService(this.movieControlF);
+        }
+        if (this.config.changeDimmersToFan === true) {
+            this.accessory.removeService(this.volumeDimmer);
+            this.accessory.removeService(this.movieControlL);
+        }
+        //////////////////Connecting to Egreat
         this.netConnect();
         //syncing////////////////////////////////////////////////////////////////////////////////////////
         setInterval(() => {
-            tcpp.probe(this.EGREAT_IP, EGREAT_PORT, (err, isAlive) => {
-                this.isEgreatAlive = isAlive;
-                this.platform.log.debug(isAlive);
-            });
+            if (!this.pauseUpdate) {
+                tcpp.probe(this.EGREAT_IP, EGREAT_PORT, (err, isAlive) => {
+                    this.isEgreatAlive = isAlive;
+                    this.platform.log.debug(isAlive);
+                });
 
-            if (this.reconnectionCounter >= this.reconnectionTry) {
-                this.platform.log.debug("Egreat Not Responding");
-                this.connectionLimit = true;
-                this.connectionLimitStatus = 1;
-                this.turnOffAll();
-                // this.netConnect()
-            }
-            if (this.isEgreatAlive === false) {
-                this.turnOffAll();
                 if (this.reconnectionCounter >= this.reconnectionTry) {
                     this.platform.log.debug("Egreat Not Responding");
                     this.connectionLimit = true;
@@ -1208,18 +1401,33 @@ class egreatAccessory {
                     this.turnOffAll();
                     // this.netConnect()
                 }
-                this.reconnectionCounter += 1;
-                //this.netConnect()
+                if (this.isEgreatAlive === false) {
+                    this.turnOffAll();
+                    if (this.reconnectionCounter >= this.reconnectionTry) {
+                        this.platform.log.debug("Egreat Not Responding");
+                        this.connectionLimit = true;
+                        this.connectionLimitStatus = 1;
+                        this.turnOffAll();
+                        // this.netConnect()
+                    }
+                    this.reconnectionCounter += 1;
+                    //this.netConnect()
+                }
+                if (this.isEgreatAlive === true && this.powerStateTV === 0) {
+                    this.client.end();
+                    delete this.client
+                    this.netConnect();
+                    // this.sending([this.pressedButton('POWER ON')]);
+                }
+            }
+            else {
+                setTimeout(() => {
+                    this.pauseUpdate = false;
+                }, 15000);
             }
             if (this.playBackState[0] === true) {
-                this.movieCounter = this.movieCounter + this.config.pollingInterval / 1000;
+                this.movieCounter += this.config.pollingInterval / 1000;
                 this.newMovieTime(this.movieCounter);
-            }
-            if (this.isEgreatAlive === true && this.powerStateTV === 0) {
-                this.client.end();
-                delete this.client
-                this.netConnect();
-                // this.sending([this.pressedButton('POWER ON')]);
             }
             this.platform.log.debug('Ready State: ', this.client.readyState);
             //this.platform.log('Number of reconnection tries: ' + this.reconnectionCounter);
@@ -1232,18 +1440,37 @@ class egreatAccessory {
             this.speakerService.updateCharacteristic(this.platform.Characteristic.Volume, this.currentVolume);
             this.speakerService.updateCharacteristic(this.platform.Characteristic.Mute, this.currentMuteState);
             this.movieTittle.updateCharacteristic(this.platform.Characteristic.ConfiguredName, this.inputName);
-            if (this.config.inputButtons === true) {
-                this.movieTittle.updateCharacteristic(this.platform.Characteristic.On, this.inputState[0]);
-                this.movieDuration.updateCharacteristic(this.platform.Characteristic.On, this.inputState[1]);
-            }
             if (this.config.volume === true) {
-                this.volumeDimmer.updateCharacteristic(this.platform.Characteristic.Brightness, this.currentVolume);
-                this.volumeDimmer.updateCharacteristic(this.platform.Characteristic.On, this.currentVolumeSwitch);
+                if (this.config.changeDimmersToFan === false) {
+                    this.volumeDimmer.updateCharacteristic(this.platform.Characteristic.Brightness, this.currentVolume);
+                    //this.volumeDimmer.getCharacteristic(this.platform.Characteristic.Brightness).updateValue(this.currentVolume);
+                    this.volumeDimmer.updateCharacteristic(this.platform.Characteristic.On, this.currentVolumeSwitch);
+                    //this.volumeDimmer.getCharacteristic(this.platform.Characteristic.On).updateValue(this.currentVolumeSwitch);
+                }
+                else {
+                    this.volumeFan.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.currentVolume);
+                    // this.volumeFan.getCharacteristic(this.platform.Characteristic.RotationSpeed).updateValue(this.currentVolume);
+                    this.volumeFan.updateCharacteristic(this.platform.Characteristic.Active, this.currentVolumeSwitch === true ? 1 : 0);
+                    // this.volumeFan.getCharacteristic(this.platform.Characteristic.Active).updateValue(this.currentVolumeSwitch === true ? 1 : 0);
+                }
             }
-
             if (this.config.movieControl === true) {
-                this.movieControlL.updateCharacteristic(this.platform.Characteristic.Brightness, this.currentMovieProgress);
-                this.movieControlL.updateCharacteristic(this.platform.Characteristic.On, this.currentMovieProgressState);
+                if (this.config.changeDimmersToFan === false) {
+                    if (this.movieControlL.getCharacteristic(this.platform.Characteristic.Brightness).value !== this.currentMovieProgress) {
+                        this.movieControlL.updateCharacteristic(this.platform.Characteristic.Brightness, this.currentMovieProgress);
+                        // this.movieControlL.getCharacteristic(this.platform.Characteristic.Brightness).updateValue(this.currentMovieProgress);
+                        this.movieControlL.updateCharacteristic(this.platform.Characteristic.On, this.currentMovieProgressState);
+                        //this.movieControlL.getCharacteristic(this.platform.Characteristic.On).updateValue(this.currentMovieProgressState);
+                    }
+                }
+                else {
+                    if (this.movieControlF.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== this.currentMovieProgress) {
+                        this.movieControlF.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.currentMovieProgress);
+                        // this.movieControlF.getCharacteristic(this.platform.Characteristic.RotationSpeed).updateValue(this.currentMovieProgress);
+                        this.movieControlF.updateCharacteristic(this.platform.Characteristic.Active, this.currentMovieProgressState === true ? 1 : 0);
+                        //this.movieControlF.getCharacteristic(this.platform.Characteristic.Active).updateValue(this.currentMovieProgressState === true ? 1 : 0);
+                    }
+                }
             }
         }, this.config.pollingInterval);
     }
@@ -1312,6 +1539,7 @@ class egreatAccessory {
     setOn(value, callback) {
         let egreatState = value;
         if (egreatState === true) {
+            this.newPowerState(true);
             this.sending([this.pressedButton('POWER ON')]);
         }
         else {
@@ -1439,15 +1667,38 @@ class egreatAccessory {
     }
     */
     newInputName(newName) {
+        if (newName.includes('.iso') || newName.includes('.ISO') || newName.includes('.MKV') || newName.includes('.mkv') || newName.includes('.mp4') || newName.includes('.mp4')) {
+            newName = newName.substring(0, newName.length - 4);
+        }
+        if (newName.length >= 64) {
+            newName = newName.slice(0, 60) + "...";
+        }
         this.inputName = newName;
         this.platform.log.debug(this.inputName);
-        this.movieTittle.updateCharacteristic(this.platform.Characteristic.ConfiguredName, this.inputName)
-        this.movieTittle.getCharacteristic(this.platform.Characteristic.ConfiguredName).updateValue(this.inputName);
+        if (this.movieTittle.getCharacteristic(this.platform.Characteristic.ConfiguredName).value !== this.inputName) {
+            this.movieTittle.updateCharacteristic(this.platform.Characteristic.ConfiguredName, this.inputName)
+        }
     }
     newInputDuration(newDuration) {
-        this.inputDuration = newDuration;
-        this.movieDuration.updateCharacteristic(this.platform.Characteristic.ConfiguredName, this.inputDuration)
-        this.movieDuration.getCharacteristic(this.platform.Characteristic.ConfiguredName).updateValue(this.inputDuration);
+        if (!newDuration.includes('Runtime')) {
+            let hourMintue = ''
+            if (this.movieRemaining > 3600) {
+                hourMintue = 'Hours';
+            }
+            else if (this.movieRemaining == 3600) {
+                hourMintue = 'Hour';
+            }
+            else {
+                hourMintue = 'Minutes';
+            }
+            this.inputDuration = 'Runtime: ' + newDuration + ' ' + hourMintue;
+        }
+        else {
+            this.inputDuration = newDuration;
+        }
+        if (this.movieDuration.getCharacteristic(this.platform.Characteristic.ConfiguredName).value !== this.inputDuration) {
+            this.movieDuration.updateCharacteristic(this.platform.Characteristic.ConfiguredName, this.inputDuration)
+        }
     }
     newMovieTime(newMovieTime) {
         if (newMovieTime === 0) {
@@ -1457,18 +1708,43 @@ class egreatAccessory {
         if (newMovieTime !== 0) {
             this.currentMovieProgressState = true;
         }
-        if (this.firstElapsedMovie + this.movieRemaining !== 0) {
-            this.currentMovieProgress = Math.round(newMovieTime * 100 / (this.firstElapsedMovie + this.movieRemaining));
+        if (this.movieRemaining !== 0) {
+            this.currentMovieProgress = Math.round(newMovieTime * 100 / (this.movieRemaining));
         }
         if (this.currentMovieProgressState === true && this.currentMovieProgress === 0) {
             this.currentMovieProgress = 1;
         }
         if (this.currentMovieProgress > 100) { this.currentMovieProgress = 100 }
         if (this.config.movieControl === true) {
-            this.movieControlL.updateCharacteristic(this.platform.Characteristic.Brightness, this.currentMovieProgress);
-            this.movieControlL.getCharacteristic(this.platform.Characteristic.Brightness).updateValue(this.currentMovieProgress);
-            this.movieControlL.updateCharacteristic(this.platform.Characteristic.On, this.currentMovieProgressState);
-            this.movieControlL.getCharacteristic(this.platform.Characteristic.On).updateValue(this.currentMovieProgressState);
+            if (this.config.changeDimmersToFan === false) {
+                if (this.movieControlL.getCharacteristic(this.platform.Characteristic.Brightness).value !== this.currentMovieProgress) {
+                    this.movieControlL.updateCharacteristic(this.platform.Characteristic.Brightness, this.currentMovieProgress);
+                    // this.movieControlL.getCharacteristic(this.platform.Characteristic.Brightness).updateValue(this.currentMovieProgress);
+                    this.movieControlL.updateCharacteristic(this.platform.Characteristic.On, this.currentMovieProgressState);
+                    //this.movieControlL.getCharacteristic(this.platform.Characteristic.On).updateValue(this.currentMovieProgressState);
+                }
+            }
+            else {
+                if (this.movieControlF.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== this.currentMovieProgress) {
+                    this.movieControlF.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.currentMovieProgress);
+                    // this.movieControlF.getCharacteristic(this.platform.Characteristic.RotationSpeed).updateValue(this.currentMovieProgress);
+                    this.movieControlF.updateCharacteristic(this.platform.Characteristic.Active, this.currentMovieProgressState === true ? 1 : 0);
+                    //this.movieControlF.getCharacteristic(this.platform.Characteristic.Active).updateValue(this.currentMovieProgressState === true ? 1 : 0);
+                }
+            }
+        }
+        if (this.config.remainMovieTimer) {
+            this.newRemainingTime = (this.movieRemaining - newMovieTime);
+            if (this.movieTimer.getCharacteristic(this.platform.Characteristic.Active).value != this.currentMovieProgressState ? 1 : 0) {
+                this.movieTimer.updateCharacteristic(this.platform.Characteristic.Active, this.currentMovieProgressState ? 1 : 0);
+                this.movieTimer.updateCharacteristic(this.platform.Characteristic.InUse, this.currentMovieProgressState ? 1 : 0);
+            }
+            if (this.newRemainingTime !== this.movieTimer.getCharacteristic(this.platform.Characteristic.RemainingDuration).value) {
+                this.movieTimer.updateCharacteristic(this.platform.Characteristic.RemainingDuration, this.newRemainingTime);
+            }
+            if (this.movieRemaining !== this.movieTimer.getCharacteristic(this.platform.Characteristic.SetDuration).value) {
+                this.movieTimer.updateCharacteristic(this.platform.Characteristic.SetDuration, this.movieRemaining);
+            }
         }
     }
     newPowerState(newValue) {
@@ -1524,12 +1800,6 @@ class egreatAccessory {
         }
         this.tvService.updateCharacteristic(this.platform.Characteristic.ActiveIdentifier, this.inputID);
         this.tvService.getCharacteristic(this.platform.Characteristic.ActiveIdentifier).updateValue(this.inputID);
-        if (this.config.inputButtons === true) {
-            this.movieTittleInput.updateCharacteristic(this.platform.Characteristic.On, this.inputState[0]);
-            this.movieTittleInput.getCharacteristic(this.platform.Characteristic.On).updateValue(this.inputState[0]);
-            this.movieDuration.updateCharacteristic(this.platform.Characteristic.On, this.inputState[1]);
-            this.movieDuration.getCharacteristic(this.platform.Characteristic.On).updateValue(this.inputState[1]);
-        }
     }
     ///Event decoder//////////////////////////////////////////////////////////////////////////////////////////////////////////////
     eventDecoder(dataReceived) {
@@ -1542,23 +1812,16 @@ class egreatAccessory {
             this.platform.log.debug(res[i]);
             if (res[i] === '' || res[i].includes('CMD') || res[i].includes('END') || res[i].includes('NOTIFY') || res[i].includes('on')) {
                 //
-
-
             }
-
             ///////////////Power Status/////////////////////////////////////////////////////////////////////
             else if (res[i].includes('standby')) {
                 this.platform.log(`Response: ${this.commandName(res[i])} ${this.newResponse}`);
                 this.resetCounter();
                 this.newPowerState(true);
             }
-
-
-
             //////Playback update/////////////////////////////////////////////////////////////
-
             else if (res[i].includes('PLAYINFO')) {
-                this.platform.log(`Response: New Movie/Video Tittle`);
+                this.platform.log(`Response: New Movie/Video Title`);
                 let tittle = res[i].split('"');
                 this.platform.log.debug(tittle[3])
                 this.newInputName(tittle[3]);
@@ -1567,8 +1830,8 @@ class egreatAccessory {
             else if (res[i].includes('runtime')) {
                 this.platform.log(`Response: New Video Runtime`);
                 let runtime = res[i].split(':');
-                this.movieRemaining = parseInt(runtime[1]);
-                let runtimeNumber = this.secondsToTime(runtime[1])
+                this.movieRemaining = parseInt(runtime[1]) / 1000;
+                let runtimeNumber = this.secondsToTime(parseInt(runtime[1]) / 1000);
                 if (runtimeNumber.startsWith('0')) {
                     runtimeNumber = runtimeNumber.substring(1);
                 }
@@ -1592,7 +1855,7 @@ class egreatAccessory {
                 this.platform.log(`Response: Stop Executed`);
                 this.resetCounter();
                 this.newPlayBackState([false, false, false]);
-                this.newInputName('Movie-Video Tittle');
+                this.newInputName('Media Title');
                 this.newInputDuration('Runtime');
                 this.newPowerState(true);
                 this.movieChapterDefault();
@@ -1883,16 +2146,19 @@ class egreatAccessory {
     movieChapterDefault() {
         if (this.config.movieControl === true) {
             this.currentMovieProgressFirst = true;
+            this.movieRemaining = 0;
             this.newMovieTime(0);
             this.movieCounter = 0;
         }
     }
     turnOffAll() {
+        this.newRemainingTime = 0;
+        this.pauseUpdate = false;
         this.newPowerState(false);
         this.newPlayBackState([false, false, false]);
         this.newInputState([false, false, false]);
         //this.newVolumeStatus(0);
-        this.newInputName('Movie-Video Tittle');
+        this.newInputName('Media Title');
         this.newInputDuration('Runtime');
         this.movieChapterDefault();
     }

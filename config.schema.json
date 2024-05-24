@@ -47,6 +47,11 @@
         "type": "boolean",
         "required": false
       },
+      "remainMovieTimer": {
+        "title": "Add Movie Timer",
+        "type": "boolean",
+        "required": false
+      },
       "mediaButtons": {
         "title": "Add Media Remote Control buttons (Next, Previous, Forward, Rewind)",
         "type": "boolean",
@@ -181,6 +186,18 @@
         "title": "Add the Skip Rewind button",
         "type": "boolean",
         "required": false
+      },
+      "changeDimmersToFan": {
+        "title": "Enable this if you would like to change the Volume and Movie Progress from Dimmers to Fans. This option is useful to avoid issues with Siri commands like 'Turn off all the lights'",
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "infoToMenu": {
+        "title": "Change Info button to Menu button",
+        "type": "boolean",
+        "required": false,
+        "default": false
       }
     }
   },
@@ -244,6 +261,15 @@
         },
         {
           "key": "movieControl"
+        },
+        {
+          "key": "remainMovieTimer"
+        },
+        {
+          "key": "changeDimmersToFan"
+        },
+        {
+          "key": "infoToMenu"
         }
       ]
     },
