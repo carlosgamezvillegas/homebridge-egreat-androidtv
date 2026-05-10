@@ -54,7 +54,7 @@ class egreatPlatform {
         const uuid = this.api.hap.uuid.generate(this.egreatDevice.egreatUniqueId);
         this.log.debug('Adding new accessory:', this.egreatDevice.egreatDisplayName);
         const accessory = new this.api.platformAccessory(this.egreatDevice.egreatDisplayName, uuid);
-        accessory.category = this.api.hap.Accessory.Categories.TV_SET_TOP_BOX;
+        accessory.category = 35;
         accessory.context.device = this.egreatDevice;
         new egreatAccessory(this, accessory);
         this.api.publishExternalAccessories(PLUGIN_NAME, [accessory]);
@@ -1794,7 +1794,7 @@ class egreatAccessory {
         }
 
         else if (this.inputState[0] === false && this.inputState[1] === false && this.inputState[2] === false) {
-            this.inputID = 0;
+            this.inputID = this.tvService.getCharacteristic(this.platform.Characteristic.ActiveIdentifier).value;
         }
         else {
         }

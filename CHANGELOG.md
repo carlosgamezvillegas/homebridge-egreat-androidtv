@@ -1,4 +1,6 @@
 # Changelog
+## [1.3.0] - 2026-05-02
+- Homebridge 2.0 support
 ## [1.2.0] - 2024-05-23
 - Bug fixes 
 - Added the option to change the Info button in the Remote to the Menu button
